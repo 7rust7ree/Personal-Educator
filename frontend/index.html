@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Personal Educator</title>
+  <script>
+    // Report page errors to the app log (data/app.log) so problems in the desktop window are visible.
+    window.__errs = [];
+    function __report(msg) {
+      window.__errs.push(msg);
+      try { fetch("/api/client-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ msg }) }); } catch (e) {}
+    }
+    addEventListener("error", (e) => __report(`${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`));
+    addEventListener("unhandledrejection", (e) => __report(`unhandled: ${e.reason && (e.reason.stack || e.reason)}`));
+  </script>
+  <link rel="icon" type="image/png" href="/static/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- animated background: aurora blobs + drifting node network + grain -->
+  <div id="bg" aria-hidden="true">
+    <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+    <canvas id="net"></canvas>
+    <div class="vignette"></div><div class="grain"></div>
+  </div>
+
+  <svg width="0" height="0" style="position:absolute">
+    <symbol id="i-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="6" cy="17" r="2.2"/><circle cx="12" cy="6" r="2.2"/><circle cx="18" cy="15" r="2.2"/><path d="M7.2 15.2 10.8 7.8M13.4 7.7l3.4 5.4M8.2 16.6l7.6-1.2"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+    <symbol id="i-ask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9.6 9.5a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.1-2.4 3.3M12 16.5h.01"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8 11 15.8M16.5 8 13 15.8"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17 19 7"/></symbol>
+  </svg>
+
+  <aside id="sidebar" class="glass">
+    <div class="brand"><span class="brand-mark"><svg><use href="#i-logo"/></svg></span>Personal Educator</div>
+    <button id="new-btn" class="btn btn-ghost"><svg><use href="#i-plus"/></svg>New lesson</button>
+    <div class="side-label">Sessions</div>
+    <nav id="session-list"></nav>
+    <div class="budget" id="budget"></div>
+    <div class="motion" title="Background animation. Lite is easier on older laptops.">
+      <span>Motion</span><button data-motion="full">Full</button><button data-motion="lite">Lite</button><button data-motion="off">Off</button>
+    </div>
+  </aside>
+
+  <main id="main">
+    <header id="topbar" hidden>
+      <h1 id="title"></h1>
+      <div class="stepper" id="stepper"><span data-p="probe">Probe</span><span data-p="plan">Plan</span><span data-p="teach">Teach</span></div>
+      <button id="plan-toggle" class="icon-btn" title="Show plan map"><svg><use href="#i-map"/></svg></button>
+    </header>
+
+    <section id="home">
+      <div class="eyebrow">Your personal teacher</div>
+      <h2 class="hero">What do you want<br>to learn today?</h2>
+      <p class="hero-sub">It finds the edge of what you know, plans the shortest path to your goal, and teaches one step at a time.</p>
+      <div class="hero-input glass">
+        <textarea id="topic" rows="1" placeholder="e.g. Why is searching a balanced BST O(log n)?"></textarea>
+        <button class="mic" data-mic-for="topic" title="Speak (Ctrl+M)"><svg><use href="#i-mic"/></svg></button>
+        <button id="start-btn" class="send-btn" title="Start"><svg><use href="#i-up"/></svg></button>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="home-opts">Teacher <select id="home-model" class="pill"></select><select id="home-effort" class="pill"></select></div>
+      <div class="recent" id="recent"></div>
+    </section>
+
+    <section id="doc" hidden><div class="col" id="col"></div></section>
+
+    <button id="to-bottom" class="glass" title="Jump to latest"><svg><use href="#i-down"/></svg></button>
+
+    <div id="composer-wrap" hidden>
+      <div id="note-chip" class="note-chip" hidden></div>
+      <div class="composer glass">
+        <div class="composer-row">
+          <div class="seg" id="seg">
+            <span class="pill-bg"></span>
+            <button data-mode="think" class="on" title="A note on what you're reading, sent along with your next answer">Thinking</button>
+            <button data-mode="ask" title="Ask a question or steer the lesson right now">Ask</button>
+          </div>
+          <textarea id="composer" rows="1"></textarea>
+          <button class="mic" data-mic-for="composer" title="Speak (Ctrl+M)"><svg><use href="#i-mic"/></svg></button>
+          <button id="send-btn" class="send-btn" title="Send"><svg><use href="#i-up"/></svg></button>
+        </div>
+      </div>
+      <div class="composer-meta">
+        <span id="session-meter"></span>
+        <select id="model" class="pill"></select>
+        <select id="effort" class="pill"></select>
+      </div>
+    </div>
+  </main>
+
+  <aside id="planpanel" class="glass" hidden>
+    <div class="plan-head"><div class="side-label">Lesson plan</div>
+      <button id="plan-close" class="icon-btn" title="Hide"><svg><use href="#i-x"/></svg></button></div>
+    <div id="plan-goal"></div>
+    <div class="progress"><i id="plan-bar"></i></div>
+    <div class="progress-label" id="plan-count"></div>
+    <div id="plan-map"></div>
+  </aside>
+
+  <div id="toasts"></div>
+
+  <script src="/static/bg.js"></script>
+  <script src="/static/render.js"></script>
+  <script src="/static/dictation.js"></script>
+  <script src="/static/clipboard.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
